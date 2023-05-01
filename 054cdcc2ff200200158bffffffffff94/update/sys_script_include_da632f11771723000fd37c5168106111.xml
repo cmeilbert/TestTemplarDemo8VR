@@ -1,0 +1,486 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_script_include">
+    <sys_script_include action="INSERT_OR_UPDATE">
+        <access>public</access>
+        <active>true</active>
+        <api_name>sn_vul.SolutionsUtil</api_name>
+        <caller_access/>
+        <client_callable>false</client_callable>
+        <description>Utility functions for Solution (sn_vul_solution) features and counts</description>
+        <name>SolutionsUtil</name>
+        <script><![CDATA[var SolutionsUtil = Class.create();
+SolutionsUtil.prototype = {
+
+    domain: 'global',
+    count_inherited: false,
+    SN_VUL_M2M_VULNERABILITY_SOLUTION: 'sn_vul_m2m_vulnerability_solution',
+    SN_VUL_SOLUTION: 'sn_vul_solution',
+    SN_VUL_SOLUTION_SUPERSEDENCE: 'sn_vul_solution_supersedence',
+    SN_VUL_VI_SOLUTION: 'sn_vul_vulnerable_item_solution',
+    SN_VUL_ENTRY: 'sn_vul_entry',
+    SN_VUL_MSRC_INTEGRATION: 'sn_vul_msrc_integration',
+    SN_VUL_RH_INTEGRATION: 'sn_vul_rh_integration',
+    SN_VUL_VULNERABLE_ITEM: 'sn_vul_vulnerable_item',
+    SYS_MOD: 'sys_app_module',
+    SYS_POL: 'sys_ui_policy',
+    SYS_MOD_WORKSPACE: 'sys_ux_list_category',
+    MSRC_INTEGRATIONS: ['3d720c0de74323006b3663c343f6a9e2'],
+    RH_INTEGRATIONS: ['bce61512c7570010555b5a59f6c26082'],
+    SOL_MODULES: ['1128f5ff77cb6300097496e6691061ae', //all solutions
+        '7cb7cc0977803300ac0a7c5168106189', //solutions separator
+        '69ec888977803300ac0a7c51681061a2', //with vul items
+        '1e58740a77603300ac0a7c516810611a' //highest supersedence
+    ],
+    SOL_POLICIES: ['b7be689fb78033000974f3fdde11a96f', //vul form
+        '7780d273b74833000974f3fdde11a9a4', //nvd vul form
+        '891b7e2fb70833000974f3fdde11a9ed', //3rd party vul form
+        '747d372d778c3300097496e6691061c9', //vi form
+        'e0488d13b70433000974f3fdde11a959' //vg form
+    ],
+    SOL_MODULES_WORKSPACE: ['0c6fa281771a20102824914f58106121', //Remediation Owner workspace Solution list module
+        'b7e3feb6c3e72010448adda58940dd3b' //VR Analyst workspace Solution list module
+    ],
+    initialize: function(domain) {
+        if (domain)
+            this.domain = domain;
+
+        this.count_inherited = gs.getProperty('sn_vul.count_inherited', 'true') == 'true';
+    },
+
+    setFeatureEnabled: function(enable) {
+        this._setActive(this.SN_VUL_MSRC_INTEGRATION, this.MSRC_INTEGRATIONS, enable);
+        this._setActive(this.SN_VUL_RH_INTEGRATION, this.RH_INTEGRATIONS, enable);
+        this._setActive(this.SYS_MOD, this.SOL_MODULES, enable);
+        this._setActive(this.SYS_POL, this.SOL_POLICIES, !enable);
+        this._setActive(this.SYS_MOD_WORKSPACE, this.SOL_MODULES_WORKSPACE, enable);
+    },
+
+    _setActive: function(table, sysIds, active) {
+        var g = new GlideRecord(table);
+        for (var index in sysIds) {
+            g.get(sysIds[index]);
+            g.setValue('active', active.toString() == 'true');
+            g.update();
+        }
+    },
+
+    _nextCascade: function(ids) {
+        var gn = [];
+        var ss = new GlideRecord('sn_vul_m2m_solution_supersedence');
+        ss.addQuery('sn_vul_solution', 'in', ids);
+        ss.query();
+        while (ss.next())
+            gn.push(ss.getValue('sn_vul_superseding_solution'));
+        return gn;
+    },
+
+    cascadeExclude: function(solutionId, entryId, exclusionType) {
+        var next = [solutionId],
+            sids = {};
+
+        while ((next = this._nextCascade(next)).length) {
+            var n = [];
+            for (var i = 0; i < i.length; i++) {
+                var ni = next[i];
+                if (!sids[ni]) {
+                    sids[ni] = true;
+                    n.push(ni);
+                }
+            }
+            next = n;
+            if (!next.length)
+                break;
+        }
+        var eids = Object.keys(sids);
+        for (var j = 0; j < eids.length; j += 100) {
+            var e = new GlideRecord('sn_vul_m2m_vulnerability_solution');
+            e.addQuery('sn_vul_entry', entryId);
+            e.addQuery('sn_vul_solution', 'IN', eids.slice(j, j + 100));
+            e.addQuery('is_inherited', true);
+            e.setValue('exclusion_type', exclusionType);
+            e.setValue('is_excluded', true);
+            e.updateMultiple();
+        }
+    },
+
+    /**
+     * Returns ids of solutions associated with given vulnerability sys Id
+     * @param vulnerabilitySysId: sys id of the vuln record
+     * @return array of matching solution ids
+     */
+    getSolutionsRelatedToVulnerability: function(vulnerabilitySysId) {
+		gs.info('cme sysid is '+ vulnerabilitySysId);
+        var solnArr = [];
+        var gr = new GlideRecord(this.SN_VUL_M2M_VULNERABILITY_SOLUTION);
+        gr.addQuery('sn_vul_entry', vulnerabilitySysId);
+       // gr.addQuery('is_excluded', false);
+        gr.query();
+		gs.info('cme returned this many ' + gr.getRowCount());
+
+        while (gr.next())
+            solnArr.push(gr.getValue('sn_vul_solution'));
+		
+        return 'sys_idIN' + solnArr;
+    },
+
+    _countsBatch: function(solutionIds, fn) {
+        var counts = {};
+        for (var i = 0; i < solutionIds.length / 100;) {
+            var c = fn(solutionIds.slice(i * 100, ++i * 100));
+            for (var k in c)
+                counts[k] = c[k];
+        }
+        return counts;
+    },
+
+    _ciCount: function(solutionIds, counts, states, key) {
+        var ga = new GlideAggregate(this.SN_VUL_VULNERABLE_ITEM);
+        this._isIn(ga, 'preferred_solution', true, solutionIds);
+        this._isIn(ga, 'state', false, states);
+
+        ga.addNotNullQuery('cmdb_ci');
+        ga.addAggregate('COUNT(DISTINCT', 'cmdb_ci.sys_id');
+        ga.groupBy('preferred_solution');
+        ga.query();
+        while (ga.next())
+            counts[ga.getValue('preferred_solution')][key] = +ga.getAggregate('COUNT(DISTINCT', 'cmdb_ci.sys_id');
+    },
+
+    _ciPotCount: function(solutionIds, counts, states, key) {
+        for (var ix in solutionIds) {
+            var solutionId = solutionIds[ix];
+
+            var ga = new GlideAggregate('sn_vul_vulnerable_item_solution');
+            ga.addQuery('vs_sn_vul_solution', solutionId);
+            ga.addQuery('vs_is_excluded', false);
+
+            if (!this.count_inherited)
+                ga.addQuery('vs_is_inherited', false);
+
+            this._isIn(ga, 'vi_state', false, states);
+            ga.addAggregate('COUNT(DISTINCT', 'vi_cmdb_ci.sys_id');
+            ga.setGroup(false);
+            ga.query();
+            if (ga.next())
+                counts[solutionId][key] = +ga.getAggregate('COUNT(DISTINCT', 'vi_cmdb_ci.sys_id');
+        }
+    },
+
+    _ciCounts: function(solutionIds, skipPotentialCiCounts) {
+        var counts = {};
+        for (var s in solutionIds)
+            counts[solutionIds[s]] = {
+                active: 0,
+                total: 0,
+                ndactive: 0,
+                ndtotal: 0,
+                potactive: 0,
+                potndactive: 0,
+                pottotal: 0
+            };
+
+        this._ciCount(solutionIds, counts, [3], 'active');
+        this._ciCount(solutionIds, counts, [], 'total');
+        this._ciCount(solutionIds, counts, [3, 12], 'ndactive');
+        this._ciCount(solutionIds, counts, [12], 'ndtotal');
+        if (!skipPotentialCiCounts) {
+            this._ciPotCount(solutionIds, counts, [3], 'potactive');
+            this._ciPotCount(solutionIds, counts, [3, 12], 'potndactive');
+            this._ciPotCount(solutionIds, counts, [], 'pottotal');
+        }
+        return counts;
+    },
+
+    _viCounts: function(solutionIds) {
+        var counts = {};
+        for (var s in solutionIds)
+            counts[solutionIds[s]] = {
+                active: {
+                    total: 0,
+                    deferred: 0
+                },
+                inactive: {
+                    total: 0,
+                    deferred: 0
+                },
+                potential: {
+                    active: 0,
+                    deferred: 0
+                }
+            };
+
+        var ga = new GlideAggregate(this.SN_VUL_VULNERABLE_ITEM);
+        this._isIn(ga, 'preferred_solution', true, solutionIds);
+        ga.addAggregate('COUNT');
+        ga.addAggregate('MAX', 'risk_score');
+        ga.groupBy('preferred_solution');
+        ga.groupBy('state');
+        ga.query();
+        while (ga.next()) {
+            var sol = ga.getValue('preferred_solution');
+            var sta = ga.getValue('state');
+            var act = sta == 3 ? 'inactive' : 'active';
+            var num = +ga.getAggregate('COUNT');
+
+            counts[sol][act].total += num;
+            if (sta == 12) //deferred status
+                counts[sol][act].deferred += num;
+        }
+
+        //potential counts
+        var gp = new GlideAggregate(this.SN_VUL_VI_SOLUTION);
+        gp.addQuery("vs_is_excluded", false);
+
+        if (!this.count_inherited)
+            gp.addQuery('vs_is_inherited', false);
+
+        this._isIn(gp, 'vs_sn_vul_solution', true, solutionIds);
+        gp.addAggregate('COUNT');
+        gp.groupBy('vi_state');
+        gp.groupBy('vs_sn_vul_solution');
+        gp.query();
+        while (gp.next()) {
+            var sln = gp.getValue('vs_sn_vul_solution');
+            var vis = gp.getValue('vi_state');
+            var cnt = +gp.getAggregate('COUNT');
+
+            if (vis != 3) //active
+                counts[sln].potential.active += cnt;
+            if (vis == 12) //deferred
+                counts[sln].potential.deferred += cnt;
+        }
+
+        return counts;
+    },
+
+    _vScores: function(solutionIds) {
+        var counts = {};
+        var ga = new GlideAggregate(this.SN_VUL_M2M_VULNERABILITY_SOLUTION);
+        ga.addQuery("is_excluded", false);
+
+        if (!this.count_inherited)
+            ga.addQuery('is_inherited', false);
+
+        this._isIn(ga, 'sn_vul_solution', true, solutionIds);
+        ga.addAggregate('MAX', 'sn_vul_entry.risk_score');
+        ga.groupBy('sn_vul_solution');
+        ga.query();
+        while (ga.next())
+            counts[ga.getValue('sn_vul_solution')] = ga.getAggregate('MAX', 'sn_vul_entry.risk_score');
+
+        return counts;
+    },
+
+    //docs say in/not in does not work with a sequence length of one
+    _isIn: function(glideRecord, field, isIn, values) {
+        if (values.length == 1)
+            glideRecord.addQuery(field, isIn ? '=' : '!=', values[0]);
+        else if (values.length)
+            glideRecord.addQuery(field, isIn ? 'IN' : 'NOT IN', values);
+    },
+
+    calculateSolutionCounts: function(solutionIds) {
+        var viCounts = this._countsBatch(solutionIds, this._viCounts.bind(this));
+        var ciCounts = this._countsBatch(solutionIds, this._ciCounts.bind(this));
+        var vScores = this._countsBatch(solutionIds, this._vScores.bind(this));
+
+        var solution = new GlideRecord(this.SN_VUL_SOLUTION);
+        for (var x in solutionIds) {
+            var s = solutionIds[x];
+            solution.get(s);
+            this._setSolutionCounts(solution, viCounts[s], ciCounts[s], vScores[s]);
+        }
+    },
+
+    calculateAllSolutionCounts: function(skipPotentialCiCounts) {
+        var solution = new GlideRecord(this.SN_VUL_SOLUTION);
+        solution.query();
+
+        while (solution.next()) {
+            var sid = solution.getUniqueValue();
+            var viCounts = this._viCounts([sid]);
+            var ciCounts = this._ciCounts([sid], skipPotentialCiCounts);
+            var vScores = this._vScores([sid]);
+            this._setSolutionCounts(solution, viCounts[sid], ciCounts[sid], vScores[sid]);
+        }
+    },
+
+    //The logic for calculating the solution risk score can be revised here
+    _getRiskScore: function(max, count) {
+        var cshare = 0;
+        if (count == 0 || max == 0)
+            return 0;
+        else if (count >= 1000)
+            cshare = 15;
+        else if (count >= 100)
+            cshare = 10;
+        else if (count >= 10)
+            cshare = 5;
+
+        max /= 100;
+        return (85 * max) + cshare;
+    },
+
+    //The logic for rating a risk score can be revised here
+    _getRiskRating: function(score) {
+        if (score == 0)
+            return 5; //5 - None
+        if (score < 30)
+            return 4; //4 - Low
+        if (score < 70)
+            return 3; //3 - Medium
+        if (score < 90)
+            return 2; //2 - High
+
+        return 1; //1 - Critical'
+    },
+
+    _setSolutionCounts: function(solution, viCounts, ciCounts, vScore) {
+        solution.setValue('remaining_pref_cis', ciCounts.active);
+        solution.setValue('total_pref_cis', ciCounts.total);
+        solution.setValue('percent_pref_cis_remediated', 100 * (ciCounts.total - ciCounts.active) / ciCounts.total);
+        solution.setValue('remaining_nd_pref_cis', ciCounts.ndactive);
+        solution.setValue('total_nd_pref_cis', ciCounts.ndtotal);
+        solution.setValue('percent_nd_pref_cis_remediated', 100 * (ciCounts.ndtotal - ciCounts.ndactive) / ciCounts.ndtotal);
+        solution.setValue('remaining_nd_pot_cis', ciCounts.potndactive);
+        solution.setValue('remaining_pot_cis', ciCounts.potactive);
+
+        solution.setValue('active_pot_vis', viCounts.potential.active);
+        solution.setValue('active_nd_pot_vis', viCounts.potential.active - viCounts.potential.deferred);
+        solution.setValue('active_pref_vis', viCounts.active.total);
+        var total = viCounts.active.total + viCounts.inactive.total;
+        solution.setValue('total_pref_vis', total);
+        solution.setValue('percent_pref_vis_remediated', 100 * viCounts.inactive.total / total);
+
+        var activend = viCounts.active.total - viCounts.active.deferred;
+        var inactivend = viCounts.inactive.total - viCounts.inactive.deferred;
+        var totalnd = activend + inactivend;
+        var percentnd = 100 * inactivend / totalnd;
+        solution.setValue('active_nd_pref_vis', activend);
+        solution.setValue('total_nd_pref_vis', totalnd);
+        solution.setValue('percent_nd_pref_vis_remediated', percentnd);
+
+        var score = this._getRiskScore(vScore || 0, viCounts.potential.active);
+        solution.setValue('risk_score', score);
+        solution.setValue('risk_rating', new sn_vul.VulnerabilityUtils().getRiskRatingFromRiskScore(score));
+        solution.setValue('is_preferred', viCounts.active.total > 0);
+        solution.setValue('status_updated_on', new GlideDateTime());
+        solution.update();
+    },
+
+    //called from solution plugin to turn on sys property: sn_vul.solutions_enabled
+    turnOnSolutionManagement: function(status) {
+        var gr = new GlideRecord("sys_properties");
+        gr.addQuery("name", "sn_vul.solutions_enabled");
+        gr.query();
+        if (gr.next()) {
+            gr.setValue("value", status);
+            gr.update();
+            gs.info("{SolutionUtil}: update sn_vul.solutions_enabled system property finished.");
+        } else
+            gs.warn("{SolutionUtil}: did not find sn_vul.solutions_enabled system property.");
+    },
+
+    processQueuedSolution: function(solutionId, chainDate) {
+        //only update to processing status if solution hasn't been queued again
+        //after the chain was calculated
+        var solution = new GlideRecord('sn_vul_solution');
+        solution.addQuery('sys_id', solutionId);
+        solution.addQuery('status_invalidated_on', '<', chainDate).addOrCondition('status_invalidated_on', '');
+        solution.setValue('metrics_status', 2);
+        solution.setWorkflow(false);
+        solution.autoSysFields(false);
+        solution.updateMultiple();
+
+        //process if updated to processing status
+        if (solution.get(solutionId) && solution.getValue('metrics_status') == 2)
+            this.calculateSolutionCounts([solutionId]);
+        else
+            return;
+
+        //don't set to complete if something else caused the solution
+        //to be queued again while it was processing
+        solution = new GlideRecord('sn_vul_solution');
+        solution.addQuery('metrics_status', 2);
+        solution.addQuery('sys_id', solutionId);
+        solution.setValue('metrics_status', 1);
+        solution.setWorkflow(false);
+        solution.autoSysFields(false);
+        solution.updateMultiple();
+    },
+
+    //chainIds and chainDate are optional
+    getNextQueuedSolution: function(chainIds, chainDate) {
+        chainIds = chainIds || [];
+        var categories = ["SCANNER", "SOLUTION"];
+
+        for (var x in categories) {
+            for (var i = 0; i <= chainIds.length / 100;) {
+                var batch = chainIds.slice(i * 100, ++i * 100);
+
+                var next = new GlideRecord('sn_vul_solution');
+                if (chainIds.length)
+                    next.addQuery('sys_id', 'IN', batch);
+
+                if (chainDate)
+                    next.addQuery('status_invalidated_on', '<', chainDate).addOrCondition('status_invalidated_on', '');
+                next.addQuery('category', categories[x]);
+                next.addQuery('metrics_status', 0);
+                next.orderBy('status_invalidated_on');
+                next.setLimit(1);
+                next.query();
+
+                if (next.next())
+                    return next;
+            }
+        }
+
+        return null;
+    },
+
+    type: 'SolutionsUtil'
+};
+
+SolutionsUtil.queueCalculationsForVulIds = function(vulIds) {
+    var gdt = new GlideDateTime();
+    for (var i = 0; i <= vulIds.length / 100;) {
+        var batch = vulIds.slice(i * 100, ++i * 100);
+
+        var g = new GlideRecord('sn_vul_solution');
+        g.addJoinQuery('sn_vul_m2m_vulnerability_solution', 'sys_id', 'sn_vul_solution')
+            .addCondition('sn_vul_entry', 'IN', batch.toString());
+
+        g.setValue('metrics_status', 0);
+        g.setValue('status_invalidated_on', gdt);
+        g.setWorkflow(false);
+        g.autoSysFields(false);
+        g.updateMultiple();
+    }
+};]]></script>
+        <sys_class_name>sys_script_include</sys_class_name>
+        <sys_created_by>admin</sys_created_by>
+        <sys_created_on>2019-01-28 22:34:23</sys_created_on>
+        <sys_id>da632f11771723000fd37c5168106111</sys_id>
+        <sys_mod_count>211</sys_mod_count>
+        <sys_name>SolutionsUtil</sys_name>
+        <sys_package display_value="Vulnerability Response" source="sn_vul">054cdcc2ff200200158bffffffffff94</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="Vulnerability Response">054cdcc2ff200200158bffffffffff94</sys_scope>
+        <sys_update_name>sys_script_include_da632f11771723000fd37c5168106111</sys_update_name>
+        <sys_updated_by>colleen</sys_updated_by>
+        <sys_updated_on>2023-02-08 00:04:38</sys_updated_on>
+    </sys_script_include>
+    <sys_claim action="INSERT_OR_UPDATE">
+        <claim_owner_scope display_value="Vulnerability Response">054cdcc2ff200200158bffffffffff94</claim_owner_scope>
+        <claim_timestamp>187d98c19c20000001</claim_timestamp>
+        <metadata_update_name>sys_script_include_da632f11771723000fd37c5168106111</metadata_update_name>
+        <previous_claim_app_version>17.1.4</previous_claim_app_version>
+        <previous_claim_name>Vulnerability Response</previous_claim_name>
+        <previous_claim_scope>054cdcc2ff200200158bffffffffff94</previous_claim_scope>
+        <sys_created_by>colleen</sys_created_by>
+        <sys_created_on>2023-05-01 23:00:50</sys_created_on>
+        <sys_id>831be625876aa110b77797573cbb35dd</sys_id>
+        <sys_mod_count>0</sys_mod_count>
+        <sys_updated_by>colleen</sys_updated_by>
+        <sys_updated_on>2023-05-01 23:00:50</sys_updated_on>
+    </sys_claim>
+</record_update>

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update sys_domain="global" table="sn_vul_calc_risk">
+    <sn_vul_calc_risk action="INSERT_OR_UPDATE">
+        <active>true</active>
+        <advanced_condition/>
+        <advanced_view>false</advanced_view>
+        <business_crit_weight>0</business_crit_weight>
+        <calculator_group display_value="Advanced Risk Calculator">2eb109c9b37300102824070416a8dcfa</calculator_group>
+        <ci_table>cmdb_ci</ci_table>
+        <condition table="sn_vul_app_vulnerable_item">active=true<item endquery="false" field="active" goto="false" newquery="false" operator="=" or="false" value="true"/>
+        </condition>
+        <condition_type>1</condition_type>
+        <description/>
+        <display_condition>Active = true</display_condition>
+        <display_value>Risk rule</display_value>
+        <exploit_skill_weight>0</exploit_skill_weight>
+        <exploit_vector_weight>0</exploit_vector_weight>
+        <exploit_weight>0</exploit_weight>
+        <exposure_condition/>
+        <exposure_weight>0</exposure_weight>
+        <filter_group/>
+        <name>Default Risk Rule</name>
+        <order>100</order>
+        <owasp_top_10_weight>5</owasp_top_10_weight>
+        <preview><![CDATA[<div><table style="width: 100%;table-layout: fixed;border: none;"><tr><th style="width:125px">Vulnerability Severity (90%)</th><th style="width:125px">Vulnerability CWE entry SANS Top 25 Position (5%)</th><th style="width:125px">Vulnerability CWE entry OWASP Top 10 Position (5%)</th><th style="width:125px">Resulting Risk Score</th></tr><tr><td>1 - Critical</td><td>1-25</td><td>1-10</td><td>100 (1 - Critical)</td></tr><tr><td>2 - High</td><td>1-25</td><td>1-10</td><td>78 (2 - High)</td></tr><tr><td>3 - Medium</td><td>1-25</td><td>1-10</td><td>55 (3 - Medium)</td></tr></table></div>]]></preview>
+        <rerun_needed>false</rerun_needed>
+        <sans_top_25_weight>5</sans_top_25_weight>
+        <script_values/>
+        <severity_weight>90</severity_weight>
+        <sys_class_name>sn_vul_calc_risk</sys_class_name>
+        <sys_created_by>admin</sys_created_by>
+        <sys_created_on>2020-03-26 02:35:26</sys_created_on>
+        <sys_domain>global</sys_domain>
+        <sys_id>b074f99db37300102824070416a8dc72</sys_id>
+        <sys_mod_count>12</sys_mod_count>
+        <sys_name>Default Risk Rule</sys_name>
+        <sys_package display_value="Vulnerability Response" source="sn_vul">054cdcc2ff200200158bffffffffff94</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="Vulnerability Response">054cdcc2ff200200158bffffffffff94</sys_scope>
+        <sys_update_name>sn_vul_calc_risk_b074f99db37300102824070416a8dc72</sys_update_name>
+        <sys_updated_by>system</sys_updated_by>
+        <sys_updated_on>2022-10-31 19:26:45</sys_updated_on>
+        <template/>
+        <total_weight>100</total_weight>
+        <value_type>1</value_type>
+    </sn_vul_calc_risk>
+    <sys_claim action="INSERT_OR_UPDATE">
+        <claim_owner_scope display_value="Vulnerability Response">054cdcc2ff200200158bffffffffff94</claim_owner_scope>
+        <claim_timestamp>187d98c1aae0000001</claim_timestamp>
+        <metadata_update_name>sn_vul_calc_risk_b074f99db37300102824070416a8dc72</metadata_update_name>
+        <previous_claim_app_version>17.1.4</previous_claim_app_version>
+        <previous_claim_name>Vulnerability Response</previous_claim_name>
+        <previous_claim_scope>054cdcc2ff200200158bffffffffff94</previous_claim_scope>
+        <sys_created_by>colleen</sys_created_by>
+        <sys_created_on>2023-05-01 23:00:50</sys_created_on>
+        <sys_id>cf1be625876aa110b77797573cbb35e1</sys_id>
+        <sys_mod_count>0</sys_mod_count>
+        <sys_updated_by>colleen</sys_updated_by>
+        <sys_updated_on>2023-05-01 23:00:50</sys_updated_on>
+    </sys_claim>
+</record_update>
